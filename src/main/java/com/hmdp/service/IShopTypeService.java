@@ -12,5 +12,5 @@ import com.hmdp.entity.ShopType;
  * @since 2021-12-22
  */
 public interface IShopTypeService extends IService<ShopType> {
-
+    
 }

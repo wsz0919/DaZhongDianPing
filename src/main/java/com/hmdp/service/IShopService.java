@@ -1,7 +1,12 @@
 package com.hmdp.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
+import com.hmdp.mapper.ShopMapper;
+
+import javax.annotation.Resource;
+import java.util.List;
 
 /**
  * <p>
@@ -13,4 +18,11 @@ import com.hmdp.entity.Shop;
  */
 public interface IShopService extends IService<Shop> {
 
+    Shop getByCacheId(Long id);
+
+    Result getBySetNxId(Long id);
+
+    String updateShop(Shop shop);
+
+    List<String> getAllId();
 }
