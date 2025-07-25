@@ -24,6 +24,19 @@ spring:
       enabled: true
       additional-exclude: src/main/java
       exclude: src/main/resource
+  rabbitmq:
+    host: 192.168.200.128
+    port: 5672
+    username: admin
+    password: admin
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    virtual-host: /
+    listener:
+      simple:
+          acknowledge-mode: manual
+      template:
+        mandatory: true
 mybatis-plus:
   type-aliases-package: com.hmdp.entity # 别名扫描包
 logging:

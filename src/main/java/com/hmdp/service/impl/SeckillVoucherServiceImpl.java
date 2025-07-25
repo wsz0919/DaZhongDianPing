@@ -4,7 +4,9 @@ import cn.hutool.core.date.LocalDateTimeUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.config.RabbitConfig;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.SeckillOrderDTO;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.entity.VoucherOrder;
@@ -13,16 +15,28 @@ import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import com.rabbitmq.client.Channel;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.jdbc.SQL;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.Date;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
+import static com.hmdp.utils.RabbitConstants.SECKILL_VOUCHER_EXCHANGE;
+import static com.hmdp.utils.RabbitConstants.SECKILL_VOUCHER_KEY;
 import static com.hmdp.utils.RedisConstants.SECKILL_STOCK_KEY;
 
 /**
@@ -34,13 +48,19 @@ import static com.hmdp.utils.RedisConstants.SECKILL_STOCK_KEY;
  * @since 2022-01-04
  */
 @Service
+@Slf4j
 public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper, SeckillVoucher> implements ISeckillVoucherService {
 
     @Resource
     private IVoucherOrderService voucherOrderService;
 
     @Resource
-    private RedisIdWorker redisIdWorker;
+    private RabbitConfig rabbitConfig;
+
+    @Resource
+    private RabbitTemplate rabbitTemplate;
+
+    private final ConcurrentHashMap<String, Long> map = new ConcurrentHashMap<>();
 
     @Override
     public Result getSeckillVoucher(Long id) {
@@ -63,40 +83,48 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
         // 判断是否用户买过此优惠券
         Long userId = UserHolder.getUser().getId();
         synchronized (userId.toString().intern()) {
-            ISeckillVoucherService proxy = (ISeckillVoucherService) AopContext.currentProxy();
-            return proxy.createVoucherOrder(userId, id);
+            long count = voucherOrderService.count(new LambdaQueryWrapper<VoucherOrder>()
+                    .eq(VoucherOrder::getUserId, userId)
+                    .eq(VoucherOrder::getVoucherId, id));
+            if (count > 0) {
+                return Result.fail("您已购买该优惠券！");
+            }
+
+            LambdaUpdateWrapper<SeckillVoucher> wrapper = new LambdaUpdateWrapper<>();
+            wrapper.eq(SeckillVoucher::getVoucherId, id)
+                    .gt(SeckillVoucher::getStock, 0)
+                    .setSql("stock = stock - 1");
+            boolean flag = this.update(wrapper);
+
+            if (!flag){
+                throw new RuntimeException("秒杀券扣减失败");
+            }
+
+            SeckillOrderDTO dto = new SeckillOrderDTO();
+            dto.setUserId(userId);
+            dto.setVoucherId(id);
+            rabbitTemplate.convertAndSend(SECKILL_VOUCHER_EXCHANGE, SECKILL_VOUCHER_KEY, dto);
         }
+        try {
+            Thread.sleep(200);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        Long orderId = map.get("orderId");
+        return Result.ok(orderId);
     }
 
-    @Transactional
-    @Override
-    public Result createVoucherOrder(Long userId, Long id) {
-        long count = voucherOrderService.count(new LambdaQueryWrapper<VoucherOrder>()
-                .eq(VoucherOrder::getUserId, userId)
-                .eq(VoucherOrder::getVoucherId, id));
-        if (count > 0) {
-            return Result.fail("您已购买该优惠券！");
+    @RabbitListener(queues = "order.result.queue")
+    public void getOrderId(Long id,
+                            Channel channel,
+                            @Header(AmqpHeaders.DELIVERY_TAG) long tag) {
+        // 返回确认信息
+        try {
+            log.info("订单编号为：{}", id);
+            map.put("orderId", id);
+            channel.basicAck(tag, false);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
-
-        LambdaUpdateWrapper<SeckillVoucher> wrapper = new LambdaUpdateWrapper<>();
-        wrapper.eq(SeckillVoucher::getVoucherId, id)
-                .gt(SeckillVoucher::getStock, 0)
-                .setSql("stock = stock - 1");
-        boolean flag = this.update(wrapper);
-
-        if (!flag){
-            throw new RuntimeException("秒杀券扣减失败");
-        }
-
-        VoucherOrder voucherOrder = new VoucherOrder();
-        long orderId = redisIdWorker.nextId("order");
-        voucherOrder.setId(orderId);
-        voucherOrder.setUserId(userId);
-        voucherOrder.setVoucherId(id);
-        flag = voucherOrderService.save(voucherOrder);
-        if (!flag){
-            throw new RuntimeException("创建秒杀券订单失败");
-        }
-        return Result.ok(orderId);
     }
 }

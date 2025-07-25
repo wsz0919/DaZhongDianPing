@@ -14,5 +14,4 @@ import com.hmdp.entity.SeckillVoucher;
  */
 public interface ISeckillVoucherService extends IService<SeckillVoucher> {
     Result getSeckillVoucher(Long id);
-    Result createVoucherOrder(Long userId, Long id);
 }
