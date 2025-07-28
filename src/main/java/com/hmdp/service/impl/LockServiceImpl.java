@@ -23,6 +23,8 @@ public class LockServiceImpl implements ILock {
 
     private StringRedisTemplate stringRedisTemplate;
 
+    private long timeoutSec;
+
     /**
      * key前缀
      */
@@ -39,7 +41,7 @@ public class LockServiceImpl implements ILock {
 
     static {
         UNLOCK_SCRIPT = new DefaultRedisScript<>();
-        UNLOCK_SCRIPT.setLocation(new ClassPathResource("lua/unlock.lua"));
+        UNLOCK_SCRIPT.setLocation(new ClassPathResource("lua/unLock.lua"));
         UNLOCK_SCRIPT.setResultType(Long.class);
     }
 
@@ -48,12 +50,36 @@ public class LockServiceImpl implements ILock {
         this.stringRedisTemplate = stringRedisTemplate;
     }
 
+    /**
+     * 加载获取锁的Lua脚本
+     */
+    private static final DefaultRedisScript<Long> TRYLOCK_SCRIPT;
+
+    static {
+        TRYLOCK_SCRIPT = new DefaultRedisScript<>();
+        TRYLOCK_SCRIPT.setLocation(new ClassPathResource("lua/tryLock.lua"));
+        TRYLOCK_SCRIPT.setResultType(Long.class);
+    }
+
+    /**
+     * 获取锁
+     *
+     * @param timeoutSec 超时时间
+     * @return
+     */
     @Override
     public boolean tryLock(long timeoutSec) {
-        String id = ID_PREFIX + Thread.currentThread().getId();
-        Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(KEY_PREFIX + name, id, timeoutSec, TimeUnit.SECONDS);
-        return Boolean.TRUE.equals(flag);
+        this.timeoutSec = timeoutSec;
+        // 执行lua脚本
+        Long result = stringRedisTemplate.execute(
+                TRYLOCK_SCRIPT,
+                Collections.singletonList(KEY_PREFIX + name),
+                ID_PREFIX + Thread.currentThread().getId(),
+                Long.toString(timeoutSec)
+        );
+        return result != null && result.equals(1L);
     }
+
 
     /**
      * 释放锁
@@ -64,7 +90,8 @@ public class LockServiceImpl implements ILock {
         stringRedisTemplate.execute(
                 UNLOCK_SCRIPT,
                 Collections.singletonList(KEY_PREFIX + name),
-                ID_PREFIX + Thread.currentThread().getId()
+                ID_PREFIX + Thread.currentThread().getId(),
+                Long.toString(this.timeoutSec)
         );
     }
 }

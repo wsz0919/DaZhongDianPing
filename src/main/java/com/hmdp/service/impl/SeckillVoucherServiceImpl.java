@@ -19,13 +19,17 @@ import com.hmdp.utils.UserHolder;
 import com.rabbitmq.client.Channel;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.jdbc.SQL;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +44,7 @@ import java.util.concurrent.ConcurrentMap;
 
 import static com.hmdp.utils.RabbitConstants.SECKILL_VOUCHER_EXCHANGE;
 import static com.hmdp.utils.RabbitConstants.SECKILL_VOUCHER_KEY;
+import static com.hmdp.utils.RedisConstants.LOCK_ORDER_KEY;
 import static com.hmdp.utils.RedisConstants.SECKILL_STOCK_KEY;
 
 /**
@@ -62,8 +67,21 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    
+    @Resource
+    private RedissonClient redissonClient;
 
     private final ConcurrentHashMap<String, Long> map = new ConcurrentHashMap<>();
+
+    /**
+     * 加载 判断秒杀券库存是否充足 并且 判断用户是否已下单 的Lua脚本
+     */
+    private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
+    static {
+        SECKILL_SCRIPT = new DefaultRedisScript<>();
+        SECKILL_SCRIPT.setLocation(new ClassPathResource("lua/seckill.lua"));
+        SECKILL_SCRIPT.setResultType(Long.class);
+    }
 
     @Override
     public Result getSeckillVoucher(Long id) {
@@ -116,8 +134,6 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
         } catch (Exception e) {
             log.error("有异常: {}", e.getMessage());
             return Result.fail("某种原因业务执行失败！");
-        } finally {
-            lock.unLock();
         }
 
         Long orderId = map.get("orderId");
