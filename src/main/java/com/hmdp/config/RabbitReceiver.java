@@ -6,9 +6,11 @@ import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.utils.RedisIdWorker;
 import com.rabbitmq.client.Channel;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RedissonClient;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.AmqpHeaders;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
@@ -34,6 +36,9 @@ public class RabbitReceiver {
 
     @Resource
     private RabbitTemplate rabbitTemplate;
+
+    @Resource
+    private RedissonClient redissonClient;
 
 
     @RabbitListener(queues = "seckill.voucher.queue")

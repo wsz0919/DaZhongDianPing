@@ -11,6 +11,7 @@ import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.SeckillVoucherMapper;
+import com.hmdp.service.ILock;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.utils.RedisIdWorker;
@@ -22,7 +23,9 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,10 +58,10 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
     private IVoucherOrderService voucherOrderService;
 
     @Resource
-    private RabbitConfig rabbitConfig;
+    private RabbitTemplate rabbitTemplate;
 
     @Resource
-    private RabbitTemplate rabbitTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     private final ConcurrentHashMap<String, Long> map = new ConcurrentHashMap<>();
 
@@ -82,7 +85,12 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
 
         // 判断是否用户买过此优惠券
         Long userId = UserHolder.getUser().getId();
-        synchronized (userId.toString().intern()) {
+        LockServiceImpl lock = new LockServiceImpl("order:" + userId, stringRedisTemplate);
+        boolean result = lock.tryLock(1200);
+        if (!result) {
+            return Result.fail("一人只能下一单！");
+        }
+        try {
             long count = voucherOrderService.count(new LambdaQueryWrapper<VoucherOrder>()
                     .eq(VoucherOrder::getUserId, userId)
                     .eq(VoucherOrder::getVoucherId, id));
@@ -104,12 +112,14 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
             dto.setUserId(userId);
             dto.setVoucherId(id);
             rabbitTemplate.convertAndSend(SECKILL_VOUCHER_EXCHANGE, SECKILL_VOUCHER_KEY, dto);
-        }
-        try {
             Thread.sleep(200);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+        } catch (Exception e) {
+            log.error("有异常: {}", e.getMessage());
+            return Result.fail("某种原因业务执行失败！");
+        } finally {
+            lock.unLock();
         }
+
         Long orderId = map.get("orderId");
         return Result.ok(orderId);
     }
