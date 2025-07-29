@@ -37,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Resource;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -67,11 +68,12 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
-    
+
     @Resource
     private RedissonClient redissonClient;
 
-    private final ConcurrentHashMap<String, Long> map = new ConcurrentHashMap<>();
+    @Resource
+    private RedisIdWorker redisIdWorker;
 
     /**
      * 加载 判断秒杀券库存是否充足 并且 判断用户是否已下单 的Lua脚本
@@ -96,61 +98,64 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
         if (seckillVoucher.getEndTime().isBefore(LocalDateTime.now())) {
             return Result.fail("秒杀已结束！");
         }
-        // 判断是否还有库存
-        if (seckillVoucher.getStock() <= 0) {
-            return Result.fail("库存不足！");
-        }
 
         // 判断是否用户买过此优惠券
         Long userId = UserHolder.getUser().getId();
-        LockServiceImpl lock = new LockServiceImpl("order:" + userId, stringRedisTemplate);
-        boolean result = lock.tryLock(1200);
+        RLock lock = redissonClient.getLock(LOCK_ORDER_KEY + userId);
+        boolean result = lock.tryLock();
         if (!result) {
             return Result.fail("一人只能下一单！");
         }
+        Long res;
         try {
-            long count = voucherOrderService.count(new LambdaQueryWrapper<VoucherOrder>()
-                    .eq(VoucherOrder::getUserId, userId)
-                    .eq(VoucherOrder::getVoucherId, id));
-            if (count > 0) {
-                return Result.fail("您已购买该优惠券！");
-            }
-
-            LambdaUpdateWrapper<SeckillVoucher> wrapper = new LambdaUpdateWrapper<>();
-            wrapper.eq(SeckillVoucher::getVoucherId, id)
-                    .gt(SeckillVoucher::getStock, 0)
-                    .setSql("stock = stock - 1");
-            boolean flag = this.update(wrapper);
-
-            if (!flag){
-                throw new RuntimeException("秒杀券扣减失败");
-            }
-
-            SeckillOrderDTO dto = new SeckillOrderDTO();
-            dto.setUserId(userId);
-            dto.setVoucherId(id);
-            rabbitTemplate.convertAndSend(SECKILL_VOUCHER_EXCHANGE, SECKILL_VOUCHER_KEY, dto);
-            Thread.sleep(200);
+            res = stringRedisTemplate.execute(
+                    SECKILL_SCRIPT,
+                    Collections.emptyList(),
+                    id.toString(),
+                    userId.toString()
+            );
         } catch (Exception e) {
-            log.error("有异常: {}", e.getMessage());
-            return Result.fail("某种原因业务执行失败！");
+            log.error("Lua脚本执行失败");
+            throw new RuntimeException(e);
         }
-
-        Long orderId = map.get("orderId");
+        if (!res.equals(0L)) {
+            // result为1表示库存不足，result为2表示用户已下单
+            int r = res.intValue();
+            return Result.fail(r == 2 ? "您已购买该优惠券！" : "库存不足");
+        }
+        VoucherOrder voucherOrder = new VoucherOrder();
+        long orderId = redisIdWorker.nextId("order");
+        voucherOrder.setId(orderId);
+        voucherOrder.setUserId(userId);
+        voucherOrder.setVoucherId(id);
+        rabbitTemplate.convertAndSend(SECKILL_VOUCHER_EXCHANGE, SECKILL_VOUCHER_KEY, voucherOrder);
         return Result.ok(orderId);
     }
 
-    @RabbitListener(queues = "order.result.queue")
-    public void getOrderId(Long id,
-                            Channel channel,
-                            @Header(AmqpHeaders.DELIVERY_TAG) long tag) {
-        // 返回确认信息
-        try {
-            log.info("订单编号为：{}", id);
-            map.put("orderId", id);
-            channel.basicAck(tag, false);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+    @Transactional
+    @Override
+    public void createScekillOrder(VoucherOrder order) {
+        Long id = order.getVoucherId();
+        Long userId = order.getUserId();
+        log.info("发送秒杀消息：userId={}, voucherId={}", userId, id);
+        long count = voucherOrderService.count(new LambdaQueryWrapper<VoucherOrder>()
+                .eq(VoucherOrder::getUserId, userId)
+                .eq(VoucherOrder::getVoucherId, id));
+        if (count > 0) {
+            log.error("您已购买该优惠券！");
+            return ;
         }
+
+        LambdaUpdateWrapper<SeckillVoucher> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(SeckillVoucher::getVoucherId, id)
+                .gt(SeckillVoucher::getStock, 0)
+                .setSql("stock = stock - 1");
+        boolean flag = this.update(wrapper);
+
+        if (!flag){
+            throw new RuntimeException("秒杀券扣减失败");
+        }
+
+        voucherOrderService.save(order);
     }
 }

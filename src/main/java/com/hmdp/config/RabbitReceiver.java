@@ -2,11 +2,13 @@ package com.hmdp.config;
 
 import com.hmdp.dto.SeckillOrderDTO;
 import com.hmdp.entity.VoucherOrder;
+import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.utils.RedisIdWorker;
 import com.rabbitmq.client.Channel;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.AmqpHeaders;
@@ -29,39 +31,18 @@ import java.io.IOException;
 public class RabbitReceiver {
 
     @Resource
-    private IVoucherOrderService voucherOrderService;
-
-    @Resource
-    private RedisIdWorker redisIdWorker;
-
-    @Resource
-    private RabbitTemplate rabbitTemplate;
-
-    @Resource
-    private RedissonClient redissonClient;
+    private ISeckillVoucherService seckillVoucherService;
 
 
     @RabbitListener(queues = "seckill.voucher.queue")
-    public void receiveMessage(SeckillOrderDTO dto,
+    public void receiveMessage(VoucherOrder voucherOrder,
                                 Channel channel,
                                @Header(AmqpHeaders.DELIVERY_TAG) long tag) {
         try {
-            VoucherOrder voucherOrder = new VoucherOrder();
-            long orderId = redisIdWorker.nextId("order");
-            voucherOrder.setId(orderId);
-            voucherOrder.setUserId(dto.getUserId());
-            voucherOrder.setVoucherId(dto.getVoucherId());
-            log.info("发送秒杀消息：userId={}, voucherId={}", dto.getUserId(), dto.getVoucherId());
-            boolean save = voucherOrderService.save(voucherOrder);
-
-            if (!save){
-                throw new RuntimeException("创建秒杀券订单失败");
-            }
-
+            log.debug("线程: {} - \n收到优惠券订单消息：{}",Thread.currentThread().getName(), voucherOrder);
+            seckillVoucherService.createScekillOrder(voucherOrder);
             // 返回确认信息
             channel.basicAck(tag, false);
-
-            rabbitTemplate.convertAndSend("order.result.exchange", "order.result.key", orderId);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
