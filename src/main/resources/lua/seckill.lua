@@ -3,10 +3,26 @@ local voucherId = ARGV[1];
 -- 用户id
 local userId = ARGV[2];
 
+local beginTime = tonumber(ARGV[3]);
+
+local endTime = tonumber(ARGV[4]);
+
 -- 库存的key
 local stockKey = 'seckill:stock:' .. voucherId;
 -- 订单key
 local orderKey = 'seckill:order:' .. voucherId;
+
+local currentTime = tonumber(redis.call('TIME')[1]);
+
+-- 判断秒杀时间是否有效
+if currentTime < beginTime then
+    -- 秒杀未开始
+    return 3;
+end
+if currentTime > endTime then
+    -- 秒杀已结束
+    return 4;
+end
 
 -- 判断库存是否充足 get stockKey > 0 ?
 local stock = redis.call('GET', stockKey);

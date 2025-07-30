@@ -37,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Resource;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
@@ -90,15 +91,8 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
 
         SeckillVoucher seckillVoucher = this.getById(id);
 
-        // 判断秒杀时间是否开始
-        if (seckillVoucher.getBeginTime().isAfter(LocalDateTime.now())) {
-            return Result.fail("秒杀未开始！");
-        }
-
-        if (seckillVoucher.getEndTime().isBefore(LocalDateTime.now())) {
-            return Result.fail("秒杀已结束！");
-        }
-
+        long beginTime = seckillVoucher.getBeginTime().toEpochSecond(ZoneOffset.of("+8"));
+        long endTime = seckillVoucher.getEndTime().toEpochSecond(ZoneOffset.of("+8"));
         // 判断是否用户买过此优惠券
         Long userId = UserHolder.getUser().getId();
         RLock lock = redissonClient.getLock(LOCK_ORDER_KEY + userId);
@@ -112,17 +106,23 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
                     SECKILL_SCRIPT,
                     Collections.emptyList(),
                     id.toString(),
-                    userId.toString()
+                    userId.toString(),
+                    String.valueOf(beginTime),
+                    String.valueOf(endTime)
             );
         } catch (Exception e) {
             log.error("Lua脚本执行失败");
             throw new RuntimeException(e);
         }
-        if (!res.equals(0L)) {
-            // result为1表示库存不足，result为2表示用户已下单
-            int r = res.intValue();
-            return Result.fail(r == 2 ? "您已购买该优惠券！" : "库存不足");
+
+        int r = res.intValue();
+        switch (r) {
+            case 1: return Result.fail("库存不足！");
+            case 2: return Result.fail("您已购买该优惠券！");
+            case 3: return Result.fail("秒杀未开始！");
+            case 4: return Result.fail("秒杀已结束！");
         }
+
         VoucherOrder voucherOrder = new VoucherOrder();
         long orderId = redisIdWorker.nextId("order");
         voucherOrder.setId(orderId);
