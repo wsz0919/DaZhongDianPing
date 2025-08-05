@@ -3,7 +3,7 @@ package com.hmdp;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.thread.ThreadUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hmdp.dto.LoginFormDTO;
+import com.hmdp.dto.LoginFormPhoneDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.User;
 import com.hmdp.service.IUserService;
@@ -130,7 +130,7 @@ public class BloomFilterTest {
                     // 创建一个登录表单
                     // 使用建造者模式构建 登录信息对象，我这里就没有使用了，我是直接使用new（效率较低不推荐使用）
 //                    LoginFormDTO formDTO = LoginFormDTO.builder().code(code).phone(phone).build();
-                    LoginFormDTO formDTO = new LoginFormDTO();
+                    LoginFormPhoneDTO formDTO = new LoginFormPhoneDTO();
                     formDTO.setCode(code);
                     formDTO.setPhone(phone);
                     // 将LoginFormDTO对象序列化为JSON

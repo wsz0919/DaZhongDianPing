@@ -1,7 +1,8 @@
 package com.hmdp.controller;
 
 
-import com.hmdp.dto.LoginFormDTO;
+import com.hmdp.dto.LoginFormEmailDTO;
+import com.hmdp.dto.LoginFormPhoneDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.UserInfo;
 import com.hmdp.service.IUserInfoService;
@@ -33,22 +34,22 @@ public class UserController {
     private IUserInfoService userInfoService;
 
     /**
-     * 发送手机验证码
+     * 发送邮箱验证码
      */
-    @PostMapping("code")
-    public Result sendCode(@RequestParam("phone") String phone) {
+    @PostMapping("/codeByEmail")
+    public Result sendCodeByEmail(@RequestParam("email") String email) {
         // 发送短信验证码并保存验证码
-        return userService.sendCode(phone);
+        return userService.sendCodeByEmail(email);
     }
 
     /**
      * 登录功能
-     * @param loginForm 登录参数，包含手机号、验证码；或者手机号、密码
+     * @param loginForm 登录参数，包含邮箱、验证码；或者邮箱、密码
      */
-    @PostMapping("/login")
-    public Result login(@RequestBody LoginFormDTO loginForm){
+    @PostMapping("/loginByEmail")
+    public Result loginByEmail(@RequestBody LoginFormEmailDTO loginForm){
         // 实现登录功能
-        return userService.login(loginForm);
+        return userService.loginByEmail(loginForm);
     }
 
     /**

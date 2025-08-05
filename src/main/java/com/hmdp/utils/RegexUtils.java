@@ -35,8 +35,8 @@ public class RegexUtils {
     // 校验是否不符合正则格式
     private static boolean mismatch(String str, String regex){
         if (StrUtil.isBlank(str)) {
-            return true;
+            return false;
         }
-        return !str.matches(regex);
+        return str.matches(regex);
     }
 }

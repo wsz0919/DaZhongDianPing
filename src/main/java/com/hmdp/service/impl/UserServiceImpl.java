@@ -6,7 +6,8 @@ import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.hmdp.dto.LoginFormDTO;
+import com.hmdp.config.MailConfig;
+import com.hmdp.dto.LoginFormEmailDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.User;
@@ -18,7 +19,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import javax.servlet.http.HttpSession;
+import javax.mail.MessagingException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -39,22 +40,31 @@ import static com.hmdp.utils.SystemConstants.*;
 @Service
 @Slf4j
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
+
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private MailConfig mailConfig;
+
+
     @Override
-    public Result sendCode(String phone) {
-        //校验手机号
-        if (RegexUtils.isPhoneInvalid(phone)) {
-            //手机号不符合
-            return Result.fail("手机号格式错误");
+    public Result sendCodeByEmail(String email) {
+        if (!RegexUtils.isEmailInvalid(email)) {
+            return Result.fail("邮箱格式错误");
         }
-        //手机号符合,生成验证码
         String code = RandomUtil.randomNumbers(6);
 
+        if (RegexUtils.isEmailInvalid(email)) {
+            try {
+                mailConfig.sendSimpleMail(email, "大众点评登录验证码", "您好，您的验证码为：" + code);
+            } catch (MessagingException e) {
+                throw new RuntimeException(e);
+            }
+        }
 
         //保存验证码到redis
-        stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY + phone, code, LOGIN_CODE_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY + email, code, LOGIN_CODE_TTL, TimeUnit.MINUTES);
         //发送验证码
         log.debug("发送验证码成功，验证码：{}", code);
         //返回ok
@@ -62,14 +72,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     }
 
     @Override
-    public Result login(LoginFormDTO loginForm) {
+    public Result loginByEmail(LoginFormEmailDTO loginForm) {
         //校验手机号
+        String email = loginForm.getEmail();
         String phone = loginForm.getPhone();
-        if (RegexUtils.isPhoneInvalid(phone)) {
-            //手机号不符合
+        if (!RegexUtils.isPhoneInvalid(phone)) {
             return Result.fail("手机号格式错误");
         }
-        String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + phone);
+        if (!RegexUtils.isEmailInvalid(email)) {
+            return Result.fail("邮箱格式错误");
+        }
+        String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + email);
         String code = loginForm.getCode();
         if (cacheCode == null || !cacheCode.equals(code)) {
             //不一致 报错
@@ -78,11 +91,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         //一致 根据手机号查询用户
         User user = baseMapper
                 .selectOne(new LambdaQueryWrapper<User>()
-                        .eq(User::getPhone, phone));
+                        .eq(User::getEmail, email).eq(User::getPhone, phone));
         //判断用户是否存在
         if (user == null) {
             //不存在 创建新用户
-            user = createUserWithPhone(phone);
+            user = createUserWithEmail(email, phone);
         }
         //生成token
         String token = UUID.randomUUID().toString(true);
@@ -100,8 +113,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         return Result.ok(token);
     }
 
-    private User createUserWithPhone(String phone) {
+
+    private User createUserWithEmail(String email, String phone) {
         User user = new User();
+        user.setEmail(email);
         user.setPhone(phone);
         //生成随机昵称
         user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomString(10));

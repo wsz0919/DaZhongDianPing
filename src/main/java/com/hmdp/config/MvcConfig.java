@@ -25,10 +25,11 @@ public class MvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         //登陆拦截器
-        registry
-                .addInterceptor(new LoginInterceptor())
-                .excludePathPatterns("/user/code"
-                        , "/user/login"
+        registry.addInterceptor(new LoginInterceptor())
+                .excludePathPatterns("/user/codeByPhone"
+                        , "/user/codeByEmail"
+                        , "/user/loginByPhone"
+                        , "/user/loginByEmail"
                         , "/blog/hot"
                         , "/shop/**"
                         , "/shop-type/**"
