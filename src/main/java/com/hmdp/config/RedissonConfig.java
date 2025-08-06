@@ -21,12 +21,15 @@ public class RedissonConfig {
     private String host;
     @Value("${spring.redis.port}")
     private String port;
+    @Value("${spring.redis.password}")
+    private String password;
 
     @Bean
     public RedissonClient redissonClient() {
         Config config = new Config();
         config.useSingleServer()
-                .setAddress("redis://" + host + ":" + port);
+                .setAddress("redis://" + host + ":" + port)
+                .setPassword(password);
         return Redisson.create(config);
     }
 }

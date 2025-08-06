@@ -2,14 +2,14 @@ server:
   port: 8081
 spring:
   application:
-    name: hmdp
+    name: dzdp
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC
-    username: root
+    url: jdbc:mysql://182.92.185.232:3306/dzdp?useSSL=false&serverTimezone=UTC
+    username: wsz
     password: Baidu1234!
   redis:
-    host: localhost
+    host: 182.92.185.232
     port: 6379
     lettuce:
       pool:
@@ -17,6 +17,7 @@ spring:
         max-idle: 10
         min-idle: 1
         time-between-eviction-runs: 10s
+    password: Baidu1234!
   jackson:
     default-property-inclusion: non_null # JSON处理时忽略非空字段
   devtools:
@@ -25,10 +26,10 @@ spring:
       additional-exclude: src/main/java
       exclude: src/main/resource
   rabbitmq:
-    host: 192.168.200.128
+    host: 182.92.185.232
     port: 5672
     username: admin
-    password: admin
+    password: Baidu1234!
     publisher-confirm-type: correlated
     publisher-returns: true
     virtual-host: /
@@ -44,6 +45,17 @@ spring:
             stateless: false # true无状态；false有状态。如果业务中包含事务，这里改为false
       template:
         mandatory: true
+  mail:
+    default-encoding: UTF-8
+    host: smtp.qq.com
+    port: 465
+    username: 1599135520@qq.com
+    properties:
+      mail:
+        smtp:
+          ssl:
+            enable: true
+    password: vdvddwixxdexjjcg
 mybatis-plus:
   type-aliases-package: com.hmdp.entity # 别名扫描包
 logging:
