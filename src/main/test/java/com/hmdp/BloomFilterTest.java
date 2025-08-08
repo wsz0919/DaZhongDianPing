@@ -119,9 +119,12 @@ public class BloomFilterTest {
                     // 发送获取验证码的请求，获取验证码
                     String codeJson = mockMvc.perform(MockMvcRequestBuilders
                                     .post("/user/code")
-                                    .queryParam("phone", phone))
+                                    .queryParam("phone", phone)
+                                    .characterEncoding("UTF-8"))
                             .andExpect(MockMvcResultMatchers.status().isOk())
-                            .andReturn().getResponse().getContentAsString();
+                            .andReturn()
+                            .getResponse()
+                            .getContentAsString(StandardCharsets.UTF_8);
                     // 将返回的JSON字符串反序列化为Result对象
                     Result result = mapper.readerFor(Result.class).readValue(codeJson);
                     Assert.isTrue(result.getSuccess(), String.format("获取“%s”手机号的验证码失败", phone));
