@@ -6,9 +6,12 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://182.92.185.232:3306/dzdp?useSSL=false&serverTimezone=UTC
+    #url: jdbc:mysql://127.0.0.1/hmdp?useSSL=false&serverTimezone=UTC
     username: wsz
+    #username: root
     password: Baidu1234!
   redis:
+    #host: 127.0.0.1
     host: 182.92.185.232
     port: 6379
     lettuce:
@@ -26,23 +29,27 @@ spring:
       additional-exclude: src/main/java
       exclude: src/main/resource
   rabbitmq:
+    #host: 192.168.200.128
     host: 182.92.185.232
     port: 5672
     username: admin
+    #password: admin
     password: Baidu1234!
     publisher-confirm-type: correlated
     publisher-returns: true
     virtual-host: /
     listener:
       simple:
-          prefetch: 5
-          acknowledge-mode: manual
-          retry:
+        prefetch: 10
+        concurrency: 4
+        acknowledge-mode: manual
+        retry:
             enabled: true # 开启消费者失败重试
             initial-interval: 1000ms # 初始的失败等待时长为1秒
             multiplier: 1 # 失败的等待时长倍数，下次等待时长 = multiplier * last-interval（类似csma-cd）
             max-attempts: 3 # 最大重试次数
             stateless: false # true无状态；false有状态。如果业务中包含事务，这里改为false
+        max-concurrency: 8
       template:
         mandatory: true
   mail:
