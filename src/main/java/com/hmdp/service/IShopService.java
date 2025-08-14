@@ -25,4 +25,6 @@ public interface IShopService extends IService<Shop> {
     String updateShop(Shop shop);
 
     List<String> getAllId();
+
+    Result queryShopByType(Integer typeId, Integer current, Double x, Double y);
 }

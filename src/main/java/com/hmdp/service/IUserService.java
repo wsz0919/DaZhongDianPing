@@ -6,6 +6,7 @@ import com.hmdp.dto.LoginFormEmailDTO;
 import com.hmdp.dto.LoginFormPhoneDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.User;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 import javax.servlet.http.HttpSession;
 
@@ -52,4 +53,16 @@ public interface IUserService extends IService<User> {
      * @return {@link Result}
      */
     Result login(LoginFormDTO loginForm, HttpSession session);
+
+    /**
+     * 登出
+     *
+     * @param
+     * @return {@link Result}
+     */
+    Result logOut(@RequestHeader("authorization") String token);
+
+    Result sign();
+
+    Result signCount();
 }

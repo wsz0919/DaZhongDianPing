@@ -1,10 +1,9 @@
 package com.hmdp.controller;
 
 
-import com.hmdp.dto.LoginFormDTO;
-import com.hmdp.dto.LoginFormEmailDTO;
-import com.hmdp.dto.LoginFormPhoneDTO;
-import com.hmdp.dto.Result;
+import cn.hutool.core.bean.BeanUtil;
+import com.hmdp.dto.*;
+import com.hmdp.entity.User;
 import com.hmdp.entity.UserInfo;
 import com.hmdp.service.IUserInfoService;
 import com.hmdp.service.IUserService;
@@ -74,12 +73,12 @@ public class UserController {
 
     /**
      * 登出功能
-     * @return 无
+     *
+     * @param token
      */
     @PostMapping("/logout")
-    public Result logout(){
-        // TODO 实现登出功能
-        return Result.fail("功能未完成");
+    public Result logout(@RequestHeader("authorization") String token){
+        return userService.logOut(token);
     }
 
     @GetMapping("/me")
@@ -101,4 +100,49 @@ public class UserController {
         // 返回
         return Result.ok(info);
     }
+
+    /**
+     * 查询用户id
+     * @param userId
+     * @return
+     */
+    @GetMapping("/{id}")
+    public Result queryUserById(@PathVariable("id") Long userId){
+        // 查询详情
+        User user = userService.getById(userId);
+        if (user == null) {
+            return Result.ok();
+        }
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        // 返回
+        return Result.ok(userDTO);
+    }
+
+    /**
+     * 用户签到
+     * @return
+     */
+    @PostMapping("/sign")
+    public Result sign(){
+        return userService.sign();
+    }
+
+    /**
+     * 记录连续签到的天数
+     * @return
+     */
+    @GetMapping("/sign/count")
+    public Result signCount(){
+        return userService.signCount();
+    }
+
+    /**
+     * 更新用户信息
+     * @return
+     */
+    @PostMapping("/info")
+    public Result updateInfo(@RequestBody String name) {
+        return Result.ok(1);
+    }
+
 }
